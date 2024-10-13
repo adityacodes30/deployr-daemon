@@ -25,19 +25,19 @@ cd "$NEXTJS_DIR"
 
 if [ -d ".next" ]; then
   echo "Removing previous build..."
-  rm -rf .next
+  sudo rm -rf .next
 fi
 
-echo "Installing dependencies (this might take a few minutes)..."
+echo "Installing dependencies"
 npm install
 
 echo "Building the Next.js app..."
 npm run build
 
 echo "Restarting Next.js app with PM2..."
-pm2 delete nextjs-app || true  
-pm2 start "npm run start" --name nextjs-app --cwd "$NEXTJS_DIR"
+sudo pm2 delete nextjs-app || true  
+sudo pm2 start "npm run start" --name nextjs-app --cwd "$NEXTJS_DIR"
 
-pm2 save
+sudo pm2 save
 
 echo "Deployment completed successfully!"

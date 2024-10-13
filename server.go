@@ -22,6 +22,10 @@ func main() {
 	defer logFile.Close()
 	log.SetOutput(logFile)
 
+	cmd := exec.Command("sudo", "/bin/bash", "/.deployr/deployr-daemon.sh", nextjsRepoURL)
+	output, _ := cmd.CombinedOutput()
+	log.Printf("Script output: %s\n", string(output))
+
 	http.HandleFunc("/deploy", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Deployment initiated")
 
