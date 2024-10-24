@@ -58,7 +58,7 @@ func handleDeploy(nextjsRepoURL string) http.HandlerFunc {
 		}
 		mu.Unlock()
 
-		fmt.Fprintf(w, "Deployment initiated. Job ID: %s\n", jobID)
+		fmt.Fprintf(w, "%s", jobID)
 
 		go runDeploymentScript(jobID, nextjsRepoURL)
 	}
@@ -80,7 +80,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, "Job ID: %s\nStatus: %s\nOutput: %s\n", status.ID, status.Status, status.Output)
+	fmt.Fprintf(w, "%s", status.Status)
 }
 
 func runInitialDeployment(nextjsRepoURL string) {
