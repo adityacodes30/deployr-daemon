@@ -6,10 +6,23 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
+	"time"
+)
+
+type JobStatus struct {
+	ID        string
+	Status    string // "running", "completed", "failed"
+	Output    string
+	Timestamp time.Time
+}
+
+var (
+	jobStatuses = make(map[string]*JobStatus)
+	mu          sync.Mutex
 )
 
 func main() {
-
 	if len(os.Args) < 2 {
 		log.Fatal("Error: Missing argument.")
 	}
@@ -22,33 +35,63 @@ func main() {
 	defer logFile.Close()
 	log.SetOutput(logFile)
 
-	cmd := exec.Command("sudo", "/bin/bash", "/.deployr/deployr-daemon.sh", nextjsRepoURL)
-	output, _ := cmd.CombinedOutput()
-	log.Printf("Script output: %s\n", string(output))
-
 	http.HandleFunc("/deploy", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "Deployment initiated")
+		jobID := fmt.Sprintf("%d", time.Now().UnixNano())
 
-		go func() {
-			cmd := exec.Command("sudo", "/bin/bash", "/.deployr/deployr-daemon.sh", nextjsRepoURL)
-			output, err := cmd.CombinedOutput()
+		mu.Lock()
+		jobStatuses[jobID] = &JobStatus{
+			ID:        jobID,
+			Status:    "running",
+			Timestamp: time.Now(),
+		}
+		mu.Unlock()
 
-			if err != nil {
-				log.Printf("Error deploy script: %v\n", err)
-				log.Printf("Script output: %s\n", string(output))
+		fmt.Fprintf(w, "Deployment initiated. Job ID: %s\n", jobID)
 
-				http.Error(w, "Deployment failed", http.StatusInternalServerError)
-				return
-			}
+		// Run the deployment script asynchronously
+		go runDeploymentScript(jobID, nextjsRepoURL)
+	})
 
-			log.Printf("Deployment successful.\n")
-			log.Printf("Script output: %s\n", string(output))
-			fmt.Fprintln(w, "Deployment completed")
-		}()
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		jobID := r.URL.Query().Get("job_id")
+		if jobID == "" {
+			http.Error(w, "Missing job_id parameter", http.StatusBadRequest)
+			return
+		}
+
+		mu.Lock()
+		status, exists := jobStatuses[jobID]
+		mu.Unlock()
+
+		if !exists {
+			http.Error(w, "Invalid job ID", http.StatusNotFound)
+			return
+		}
+
+		fmt.Fprintf(w, "Job ID: %s\nStatus: %s\nOutput: %s\n", status.ID, status.Status, status.Output)
 	})
 
 	log.Println("Server running on :6213")
 	if err := http.ListenAndServe(":6213", nil); err != nil {
 		log.Fatal("Error starting server:", err)
+	}
+}
+
+func runDeploymentScript(jobID, nextjsRepoURL string) {
+	cmd := exec.Command("sudo", "/bin/bash", "/.deployr/deployr-daemon.sh", nextjsRepoURL)
+	output, err := cmd.CombinedOutput()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	status := jobStatuses[jobID]
+	if err != nil {
+		status.Status = "failed"
+		status.Output = fmt.Sprintf("Error: %v\nOutput: %s", err, string(output))
+		log.Printf("Deployment failed for job %s: %v\n", jobID, err)
+	} else {
+		status.Status = "completed"
+		status.Output = string(output)
+		log.Printf("Deployment successful for job %s.\n", jobID)
 	}
 }
